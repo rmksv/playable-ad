@@ -1,6 +1,7 @@
 import * as THREE from "three";
-import App from "./App";
+import App from "../App";
 import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+import GameField from "./GameField";
 
 export default class Scene extends THREE.Scene {
     constructor() {
@@ -22,12 +23,12 @@ export default class Scene extends THREE.Scene {
         light.position.set(-1, -1, -1);
         this.add(light);
 
-        light = new THREE.AmbientLight(0xffffff, 0.7);
+        light = new THREE.AmbientLight(0xffffff, 0.5);
         this.add(light);
 
-        this.map = App.getModel("map");
-        this.map.scale.setScalar(0.1);
-        this.add(this.map);
+        this.gameField = new GameField();
+        this.gameField.scale.setScalar(0.1);
+        this.add(this.gameField);
     }
 
     onResize() {
@@ -39,6 +40,8 @@ export default class Scene extends THREE.Scene {
         if (this.controls) {
             this.controls.update();
         }
+
+        this.gameField.tick();
 
         App.renderer.render(this, this.camera);
     }

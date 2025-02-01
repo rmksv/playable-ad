@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import Scene from "./Scene";
+import Scene from "./src/Scene";
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 
 class App {
