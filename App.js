@@ -6,6 +6,8 @@ class App {
 
     static renderer = null;
     static scene = null;
+    static time = 0;
+    static clock = new THREE.Clock();
     static models = {};
 
     static async init() {
@@ -38,8 +40,12 @@ class App {
         return App.models[name].clone();
     }
 
-    static tick() {
-        App.scene.tick();
+    static tick(time) {
+        const delta = App.time === 0 ? 0 : time - App.time;
+
+        App.scene.tick(delta);
+
+        App.time = time;
     }
 
     static onResize() {
