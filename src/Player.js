@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
 
+//start
 export default class Player {
     constructor(model) {
         this.model = model;
