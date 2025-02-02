@@ -6,13 +6,17 @@ import Player from "./Player";
 import CannonDebugRenderer from "./cannonDebugRenderer";
 import PhysWorld from "./PhysWorld";
 import Ball from "./Ball";
+import * as CANNON from "cannon-es";
 
 export default class Scene extends THREE.Scene {
     constructor() {
         super();
+        this.background = new THREE.Color("#5fadd6");
+
         this.isDown = "none";
         this.time = 0;
         this.balls = [];
+        this.isEnd = false;
 
         this.createChildren();
         this.initPhysics();
@@ -22,9 +26,9 @@ export default class Scene extends THREE.Scene {
     createChildren() {
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 10000);
         this.camera.position.set(0, 10, -10);
-        this.camera.lookAt(0, 0, 0);
+        this.camera.lookAt(0, 0, 3);
 
-        this.controls = new OrbitControls(this.camera, App.renderer.domElement);
+        // this.controls = new OrbitControls(this.camera, App.renderer.domElement);
 
         let light = new THREE.DirectionalLight(0xffffff, 1);
         light.position.set(0, 10, -10);
@@ -52,24 +56,15 @@ export default class Scene extends THREE.Scene {
     initPhysics() {
         this.physWorld = new PhysWorld();
 
-        this.physWorld.addGround(this.water);
+        this.water.physBody = this.physWorld.addWater(this.water);
         this.physWorld.addLandZone(this.map.getObjectByName("Zones"));
         this.player.initPhysics(this.physWorld);
         this.ship.initPhysics(this.physWorld);
 
-        this.cannonDebugRenderer = new CannonDebugRenderer(this, this.physWorld);
+        // this.cannonDebugRenderer = new CannonDebugRenderer(this, this.physWorld);
     }
 
     handleEvents() {
-        document.addEventListener("keydown", (e) => {
-            if (e.code === "KeyA") {
-                this.player.setDirection({x: 1, y: 0});
-            }
-            if (e.code === "KeyD") {
-                this.player.setDirection({x: -1, y: 0});
-            }
-        });
-
         if (this.controls) {
             return;
         }
@@ -79,6 +74,10 @@ export default class Scene extends THREE.Scene {
     }
 
     onMouseDown(e) {
+        if (this.isEnd) {
+            return;
+        }
+
         if (this.isDown !== "none") {
             return;
         }
@@ -109,12 +108,47 @@ export default class Scene extends THREE.Scene {
     }
 
     spawnBall() {
-        const ball = new Ball(this.map.getObjectByName("Ball").clone());
-        ball.setSpawnPosition(new THREE.Vector3(this.ship.model.position.x, this.ship.model.position.y + 6, this.ship.model.position.z));
+        const model = this.map.getObjectByName("Ball").clone();
+        const ball = new Ball(model);
+        ball.setSpawnPosition(this.ship.model.position.clone().add(new THREE.Vector3(0, 5, -5)));
         ball.initPhysics(this.physWorld);
-        ball.applyTarget(this.player.body);
+        ball.shoot(this.player.body.position.clone().add(new THREE.Vector3((Math.random() > 0.5 ? -1 : 1) * this.player.speed, 1, -2)));
         this.add(ball.model);
         this.balls.push(ball);
+
+        ball.physBody.addEventListener("collide", (e) => {
+            this.onBallCollision(e, ball);
+        });
+    }
+
+    onBallCollision(e, ball) {
+        ball.physBody.removeEventListener("collide");
+        ball.targetPosition = null;
+
+        if (e.body === this.player.physBat && this.ship) {
+            const direction = new THREE.Vector3().subVectors(this.ship.model.position, ball.model.position).normalize();
+            const hitStrength = 1;
+            const upwardBoost = 0.5;
+
+            const impulse = new CANNON.Vec3(
+                direction.x * hitStrength,
+                upwardBoost,
+                direction.z * hitStrength
+            );
+
+            ball.physBody.applyImpulse(impulse, ball.physBody.position);
+        } else if (e.body === this.water.physBody) {
+            ball.toRemove = true;
+        } else if (this.ship && e.body === this.ship.physBody) {
+            ball.toRemove = true;
+
+            let hp = this.ship.removeHP();
+            if (hp === 0) {
+                this.isEnd = true;
+                this.isDown = "none";
+                this.player.setDirection({x: 0, y: 0});
+            }
+        }
     }
 
     onResize() {
@@ -123,28 +157,41 @@ export default class Scene extends THREE.Scene {
     }
 
     tick(delta) {
+        this.physWorld.tick(delta);
+
         if (this.controls) {
             this.controls.update();
         } else {
-            this.camera.position.set(this.player.body.position.x, this.player.body.position.y + 5, this.player.body.position.z - 5);
+            this.camera.position.set(this.player.body.position.x, 5, -10);
         }
 
         if (this.cannonDebugRenderer) {
             this.cannonDebugRenderer.update();
         }
 
+        if (this.isEnd && this.ship) {
+            this.physWorld.removeBody(this.ship.physBody);
+            this.ship.model.parent.remove(this.ship.model);
+            this.ship = null;
+        }
+
         this.time += delta;
 
-        if (this.time >= 2000) {
+        if (this.time >= 2000 && !this.isEnd) {
             this.time = 0;
             this.spawnBall();
         }
 
         for (let ball of this.balls) {
-            ball.tick(delta);
+            if (ball.toRemove) {
+                this.physWorld.removeBody(ball.physBody);
+                this.remove(ball.model);
+                this.balls.splice(this.balls.indexOf(ball), 1);
+                break;
+            } else {
+                ball.tick(delta);
+            }
         }
-
-        this.physWorld.tick(delta);
 
         this.player.tick(delta);
 
